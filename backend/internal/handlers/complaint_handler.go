@@ -19,7 +19,6 @@ func CreateComplaint(c *fiber.Ctx) error {
 	latStr := c.FormValue("latitude")
 	lngStr := c.FormValue("longitude")
 
-	// converter strings para float64
 	lat, _ := strconv.ParseFloat(latStr, 64)
 	lng, _ := strconv.ParseFloat(lngStr, 64)
 
@@ -37,17 +36,14 @@ func CreateComplaint(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "Erro ao salvar imagem localmente"})
 	}
 
-	// 3. Criar o objeto para o Banco de Dados
 	novaDenuncia := models.Complaint{
 		City:    city,
 		Street:       street,
 		Latitude:  lat,
 		Longitude: lng,
-		PhotoURL:   filePath, // Guardamos o caminho do arquivo no .db
+		PhotoURL:   filePath, 
 	}
 
-	// 4. O "Pulo do Gato": Mandar para o arquivo .db
-	// O GORM faz todo o trabalho de SQL por baixo dos panos
 	result := database.DB.Create(&novaDenuncia) 
 	
 	if result.Error != nil {
