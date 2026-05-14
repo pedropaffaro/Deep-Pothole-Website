@@ -1,0 +1,16 @@
+@import "tailwindcss";
+@import "slick-carousel/slick/slick.css";
+@import "slick-carousel/slick/slick-theme.css";
+
+#root,
+html,
+body {
+  @apply overscroll-none;
+}
+
+@theme {
+  --color-blue-primary: #2a48a3;
+  --color-blue-secondary: #202d53;
+  --color-blue-terciary: #1b2237;
+  --color-yellow-primary: #ffca3a;
+}
