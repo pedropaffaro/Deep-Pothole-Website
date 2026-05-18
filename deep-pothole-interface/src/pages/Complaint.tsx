@@ -23,6 +23,17 @@ function Complaint() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const resetForm = () => {
+    setFoto(null);
+
+    setCidade("");
+    setRua("");
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
   useEffect(() => {
     if ("geolocation" in navigator) {
       setIsLoadingLocation(true);
@@ -89,13 +100,15 @@ function Complaint() {
       // 2. Fazemos a chamada para o IP/Porta do Go
       const response = await fetch("http://localhost:8080/api/v1/complaint", {
         method: "POST",
-        body: formData, 
+        body: formData,
       });
 
       if (response.ok) {
         const data = await response.json();
         console.log("Sucesso:", data);
         alert("Denúncia salva no SQLite!");
+
+        resetForm();
       } else {
         alert("Erro no servidor");
       }
