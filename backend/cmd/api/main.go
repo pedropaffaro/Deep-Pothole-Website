@@ -5,13 +5,12 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
-	"github.com/pedropaffaro/deep-pothole-backend/internal/database"
+	"github.com/joho/godotenv"
 	"github.com/pedropaffaro/deep-pothole-backend/internal/handlers"
 )
 
 func main() {
-	database.InitDB()
-
+	godotenv.Load()
 	app := fiber.New()
 
 	// Middleware
