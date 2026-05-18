@@ -10,10 +10,10 @@ function Button({
   to,
   type = "button",
   className,
+  disabled = false,
   ...props
 }: ButtonProps) {
-  const baseStyles =
-    "flex items-center justify-center w-full bg-yellow-primary hover:bg-[#e0b441] text-blue-secondary font-bold text-xl py-4 rounded-[25px] transition-colors shadow-lg cursor-pointer text-center";
+  const baseStyles = `flex items-center justify-center w-full ${disabled ? "bg-[#e0b441] cursor-not-allowed pointer-events-none opacity-50" : "bg-yellow-primary"} hover:bg-[#e0b441] text-blue-secondary font-bold text-xl py-4 rounded-[25px] transition-colors shadow-lg cursor-pointer text-center`
 
   if (to) {
     return (

@@ -1,5 +1,6 @@
 import Navbar from "../components/Navbar";
 import Button from "../components/Button";
+import Spinner from "../components/Spinner";
 import { useState, useEffect, useRef } from "react";
 
 // Interface para mapear a resposta da API de geolocalização (Nominatim)
@@ -20,6 +21,7 @@ function Complaint() {
     null
   );
   const [isLoadingLocation, setIsLoadingLocation] = useState<boolean>(false);
+  const [isSending, setSending] = useState<boolean>(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -97,6 +99,12 @@ function Complaint() {
     }
 
     try {
+      // desativador de chamadas ate o retorno da chamada anterior da API
+      setSending(true)
+
+      // !!!!!!!!!!!!!: Remover após teste visual do spinner
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+
       // 2. Fazemos a chamada para o IP/Porta do Go
       const response = await fetch("http://localhost:8080/api/v1/complaint", {
         method: "POST",
@@ -115,12 +123,17 @@ function Complaint() {
     } catch (error) {
       console.error("Erro de conexão:", error);
       alert("O backend está rodando?");
+    } finally {
+      setSending(false)
     }
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#2a3c6b] to-[#1e293b] font-sans pb-10">
       <Navbar />
+
+      {/* Renderiza o Spinner quando o formulário está sendo enviado */}
+      {isSending && <Spinner />}
 
       <main className="max-w-md mx-auto px-6 pt-32">
         <h1 className="text-white text-4xl font-bold mb-8 text-center">
@@ -233,7 +246,7 @@ function Complaint() {
             </div>
           </div>
 
-          <Button type="submit" label="Enviar Denúncia" className="mt-4" />
+          <Button type="submit" label="Enviar Denúncia" className="mt-4" disabled={isSending}/>
         </form>
       </main>
     </div>
