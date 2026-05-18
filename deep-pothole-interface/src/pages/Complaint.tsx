@@ -129,7 +129,7 @@ function Complaint() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#2a3c6b] to-[#1e293b] font-sans pb-10">
+    <div className="min-h-screen bg-linear-to-b from-[#2a3c6b] to-[#1e293b] font-sans pb-10">
       <Navbar />
 
       {/* Renderiza o Spinner quando o formulário está sendo enviado */}
