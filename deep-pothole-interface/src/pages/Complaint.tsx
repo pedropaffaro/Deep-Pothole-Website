@@ -1,6 +1,8 @@
 import Navbar from "../components/Navbar";
 import Button from "../components/Button";
 import Spinner from "../components/Spinner";
+import MeuMapa from "../components/MeuMapa";
+
 import { useState, useEffect, useRef } from "react";
 
 // Interface para mapear a resposta da API de geolocalização (Nominatim)
@@ -17,8 +19,8 @@ function Complaint() {
   const [foto, setFoto] = useState<string | null>(null);
   const [cidade, setCidade] = useState<string>("");
   const [rua, setRua] = useState<string>("");
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(
-    null
+  const [coords, setCoords] = useState<{ lat: number; lng: number }>(
+    {lat: -1, lng: -1}
   );
   const [isLoadingLocation, setIsLoadingLocation] = useState<boolean>(false);
   const [isSending, setSending] = useState<boolean>(false)
@@ -36,6 +38,54 @@ function Complaint() {
     }
   };
 
+  const fetchAddressByCoords = async (lat: number, lng: number) => {
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`
+      );
+      const data: NominatimResponse = await response.json();
+      if (data && data.address) {
+        setCidade(
+          data.address.city ||
+            data.address.town ||
+            data.address.village ||
+            ""
+        );
+        setRua(data.address.road || "");
+      }
+    } catch (error) {
+      console.error("Erro ao buscar o endereço:", error);
+    }
+  };
+
+  const handleLocationSelect = (lat: number, lng: number) => {
+    setCoords({ lat, lng });
+    fetchAddressByCoords(lat, lng);
+  };
+
+  const handleSearchAddress = async () => {
+    if (!cidade && !rua) return;
+    setIsLoadingLocation(true);
+    try {
+      const query = `${rua}, ${cidade}`;
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+          query
+        )}`
+      );
+      const data = await response.json();
+      if (data && data.length > 0) {
+        setCoords({ lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) });
+      } else {
+        alert("Endereço não encontrado no mapa.");
+      }
+    } catch (error) {
+      console.error("Erro na busca de endereço:", error);
+    } finally {
+      setIsLoadingLocation(false);
+    }
+  };
+
   useEffect(() => {
     if ("geolocation" in navigator) {
       setIsLoadingLocation(true);
@@ -43,27 +93,8 @@ function Complaint() {
         async (position: GeolocationPosition) => {
           const { latitude, longitude } = position.coords;
           setCoords({ lat: latitude, lng: longitude });
-          try {
-            const response = await fetch(
-              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
-            );
-
-            const data: NominatimResponse = await response.json();
-
-            if (data && data.address) {
-              setCidade(
-                data.address.city ||
-                  data.address.town ||
-                  data.address.village ||
-                  ""
-              );
-              setRua(data.address.road || "");
-            }
-          } catch (error) {
-            console.error("Erro ao buscar o endereço:", error);
-          } finally {
-            setIsLoadingLocation(false);
-          }
+          await fetchAddressByCoords(latitude, longitude);
+          setIsLoadingLocation(false);
         },
         (error: GeolocationPositionError) => {
           console.error("Erro ao obter a localização do dispositivo:", error);
@@ -201,38 +232,29 @@ function Complaint() {
               )}
             </div>
 
-            <div className="w-full h-32 bg-gray-200 rounded-t-xl overflow-hidden relative">
-              <img
-                src="https://www.mapquestapi.com/staticmap/v5/map?key=YOUR_KEY_HERE&center=-23.5505,-46.6333&zoom=15&size=600,400"
-                alt="Mapa da localização"
-                className="w-full h-full object-cover opacity-70"
-              />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <svg
-                  className="w-8 h-8 text-red-500 drop-shadow-md"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-              </div>
+            <div className="w-full h-64 bg-gray-200 rounded-xl overflow-hidden relative mb-2">
+              {coords.lat !== -1 && coords.lng !== -1 ? (
+                <MeuMapa lat={coords.lat} lon={coords.lng} onLocationSelect={handleLocationSelect} />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-gray-500">
+                  Aguardando localização...
+                </div>
+              )}
             </div>
 
-            <div className="space-y-3 mt-3">
-              <input
-                type="text"
-                placeholder="Cidade"
-                value={cidade}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setCidade(e.target.value)
-                }
-                className="w-full px-4 py-3 bg-white text-blue-primary placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#FACC15]"
-                required
-              />
+            <div className="space-y-2 mt-3 rounded-xl">
+              <div className="flex gap-2 w-full">
+                <input
+                  type="text"
+                  placeholder="Cidade"
+                  value={cidade}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    setCidade(e.target.value)
+                  }
+                  className="w-full px-4 py-3 rounded-lg bg-white text-blue-primary placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#FACC15]"
+                  required
+                />
+              </div>
               <input
                 type="text"
                 placeholder="Rua"
@@ -240,9 +262,16 @@ function Complaint() {
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                   setRua(e.target.value)
                 }
-                className="w-full px-4 py-3 rounded-b-lg bg-white text-blue-primary placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#FACC15]"
+                className="w-full px-4 py-3 rounded-lg bg-white text-blue-primary placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#FACC15]"
                 required
               />
+              <button
+                type="button"
+                onClick={handleSearchAddress}
+                className="w-full mt-2 py-2 bg-[#2a3c6b] border border-white/20 text-white font-semibold rounded-lg hover:bg-white/10 transition-colors"
+              >
+                Buscar endereço no mapa
+              </button>
             </div>
           </div>
 

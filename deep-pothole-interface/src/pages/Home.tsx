@@ -1,6 +1,5 @@
 import Button from "../components/Button";
 import Navbar from "../components/Navbar";
-import Footer from "../components/Footer";
 import GlassCard from "../components/GlassCard";
 import StatisticCard from "../components/StatisticCard";
 
