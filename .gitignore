@@ -1,0 +1,11 @@
+.env
+.env.*
+
+*.db
+*.db-*
+*.bak-*
+
+uploads/
+
+node_modules/
+dist/
