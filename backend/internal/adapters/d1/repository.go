@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/pedropaffaro/deep-pothole-backend/internal/complaint"
@@ -31,9 +32,15 @@ func New(accountID, databaseID, token string) *Repo {
 
 func (r *Repo) Create(ctx context.Context, c *complaint.Complaint) error {
 	const query = `INSERT INTO complaints (city, street, latitude, longitude, photo_key)
-	               VALUES (?, ?, ?, ?, ?)`
+	               VALUES (?, ?, ?, ?, ?)` //o fato de já definir aqui como é a estrutura da query, remove o perigo de query injection
 
-	res, err := r.query(ctx, query, c.City, c.Street, c.Latitude, c.Longitude, c.PhotoKey)
+	res, err := r.query(ctx, query, []string{
+		c.City,
+		c.Street,
+		strconv.FormatFloat(c.Latitude, 'f', -1, 64),
+		strconv.FormatFloat(c.Longitude, 'f', -1, 64),
+		c.PhotoKey,
+	})
 	if err != nil {
 		return err
 	}
@@ -52,7 +59,7 @@ func (r *Repo) List(ctx context.Context, limit int) ([]complaint.Complaint, erro
 	const query = `SELECT id, city, street, latitude, longitude, photo_key
 	               FROM complaints ORDER BY id DESC LIMIT ?`
 
-	res, err := r.query(ctx, query, limit)
+	res, err := r.query(ctx, query, []string{strconv.Itoa(limit)})
 	if err != nil {
 		return nil, err
 	}
@@ -104,9 +111,9 @@ type apiError struct {
 	Message string `json:"message"`
 }
 
-func (r *Repo) query(ctx context.Context, sql string, params ...any) ([]queryResult, error) {
+func (r *Repo) query(ctx context.Context, sql string, params []string) ([]queryResult, error) {
 	if params == nil {
-		params = []any{}
+		params = []string{}
 	}
 	body, err := json.Marshal(map[string]any{"sql": sql, "params": params})
 	if err != nil {
@@ -115,7 +122,7 @@ func (r *Repo) query(ctx context.Context, sql string, params ...any) ([]queryRes
 
 	url := fmt.Sprintf("%s/accounts/%s/d1/database/%s/query", apiBase, r.accountID, r.databaseID)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body)) //para isso que precisava do "ctx"
 	if err != nil {
 		return nil, fmt.Errorf("d1: montar requisição: %w", err)
 	}
