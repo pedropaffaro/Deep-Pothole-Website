@@ -1,10 +1,13 @@
 package complaint
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"time"
@@ -15,12 +18,13 @@ var allowedExtensions = map[string]bool{
 }
 
 type Service struct {
-	repo   Repository
-	photos PhotoStorage
+	repo     Repository
+	photos   PhotoStorage
+	detector Detector
 }
 
-func NewService(repo Repository, photos PhotoStorage) *Service {
-	return &Service{repo: repo, photos: photos}
+func NewService(repo Repository, photos PhotoStorage, detector Detector) *Service {
+	return &Service{repo: repo, photos: photos, detector: detector}
 }
 
 func (s *Service) Create(ctx context.Context, in CreateInput) (*Complaint, error) {
@@ -51,9 +55,24 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*Complaint, error
 		return nil, err
 	}
 
-	if err := s.photos.Upload(ctx, key, in.ContentType, in.Photo); err != nil {
+	raw, err := io.ReadAll(in.Photo)
+	if err != nil {
+		return nil, fmt.Errorf("ler foto: %w", err)
+	}
+
+	if err := s.photos.Upload(ctx, key, in.ContentType, bytes.NewReader(raw)); err != nil {
 		return nil, fmt.Errorf("gravar foto: %w", err)
 	}
+
+	out, err := s.detector.Detect(ctx, raw)
+	if err != nil {
+		return nil, fmt.Errorf("detectar: %w", err)
+	}
+	outKey := key + "-detect.jpg"
+	if err := s.photos.Upload(ctx, outKey, "image/jpeg", bytes.NewReader(out)); err != nil {
+		return nil, fmt.Errorf("gravar saida do modelo: %w", err)
+	}
+	slog.Info("modelo: saida gravada", "chave", outKey, "bytes", len(out))
 
 	c := &Complaint{
 		City:      city,
