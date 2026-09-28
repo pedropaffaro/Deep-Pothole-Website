@@ -24,6 +24,7 @@ type Options struct {
 }
 
 type Storage struct {
+	client        *awss3.Client
 	uploader      *manager.Uploader
 	bucket        string
 	publicBaseURL string
@@ -46,6 +47,7 @@ func New(ctx context.Context, opts Options) (*Storage, error) {
 	})
 
 	return &Storage{
+		client:        client,
 		uploader:      manager.NewUploader(client),
 		bucket:        opts.Bucket,
 		publicBaseURL: strings.TrimRight(opts.PublicBaseURL, "/"),
@@ -64,6 +66,21 @@ func (s *Storage) Upload(ctx context.Context, key, contentType string, r io.Read
 
 	if _, err := s.uploader.Upload(ctx, in); err != nil {
 		return fmt.Errorf("enviar %q para o bucket %q: %w", key, s.bucket, err)
+	}
+	return nil
+}
+
+func (s *Storage) Delete(ctx context.Context, key string) error {
+	if key == "" {
+		return nil
+	}
+
+	in := &awss3.DeleteObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	}
+	if _, err := s.client.DeleteObject(ctx, in); err != nil {
+		return fmt.Errorf("apagar %q do bucket %q: %w", key, s.bucket, err)
 	}
 	return nil
 }

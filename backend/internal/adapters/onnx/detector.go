@@ -1,9 +1,11 @@
 package onnx
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	_ "embed"
+	"encoding/binary"
 	"fmt"
 	"image"
 	"image/color"
@@ -16,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	ort "github.com/yalue/onnxruntime_go"
@@ -37,6 +40,7 @@ const (
 	maskMin   = 0.5
 	lineWidth = 4
 	maskAlpha = 0.45
+	debugTopK = 10
 )
 
 var boxColor = color.RGBA{255, 0, 0, 255}
@@ -77,14 +81,14 @@ func (d *Detector) Close() error {
 	return d.session.Destroy()
 }
 
-func (d *Detector) Detect(ctx context.Context, img []byte) ([]byte, error) {
+func (d *Detector) Detect(ctx context.Context, img []byte) ([]byte, float64, int, error) {
 	start := time.Now()
 	slog.Info("onnx: detect inicio", "imagem_bytes", len(img))
 
 	src, format, err := image.Decode(bytes.NewReader(img))
 	if err != nil {
 		slog.Error("onnx: decode falhou", "tipo_detectado", http.DetectContentType(img), "primeiros_bytes", fmt.Sprintf("% x", img[:min(16, len(img))]), "erro", err)
-		return nil, err
+		return nil, 0, 0, err
 	}
 	slog.Info("onnx: imagem decodificada", "formato", format, "largura", src.Bounds().Dx(), "altura", src.Bounds().Dy())
 	dump("1-original.jpg", src)
@@ -94,35 +98,43 @@ func (d *Detector) Detect(ctx context.Context, img []byte) ([]byte, error) {
 
 	inTensor, err := ort.NewTensor(ort.NewShape(1, 3, imgSize, imgSize), preprocess(resized))
 	if err != nil {
-		return nil, err
+		return nil, 0, 0, err
 	}
 	defer inTensor.Destroy()
 	slog.Info("onnx: preprocess ok", "ms", time.Since(start).Milliseconds())
 
 	outTensor, err := ort.NewEmptyTensor[float32](ort.NewShape(1, numFields, numBoxes))
 	if err != nil {
-		return nil, err
+		return nil, 0, 0, err
 	}
 	defer outTensor.Destroy()
 
 	protoTensor, err := ort.NewEmptyTensor[float32](ort.NewShape(1, numProtos, maskSize, maskSize))
 	if err != nil {
-		return nil, err
+		return nil, 0, 0, err
 	}
 	defer protoTensor.Destroy()
 
 	slog.Info("onnx: run inicio")
 	if err := d.session.Run([]ort.Value{inTensor}, []ort.Value{outTensor, protoTensor}); err != nil {
-		return nil, err
+		return nil, 0, 0, err
 	}
 	slog.Info("onnx: run ok", "ms", time.Since(start).Milliseconds())
 
 	raw := outTensor.GetData()
+	protos := protoTensor.GetData()
+	logTensor("output0", raw, numFields, numBoxes)
+	logTensor("output1", protos, numProtos, maskSize*maskSize)
+	logFields(raw)
 	logScores(raw)
+	logTopBoxes(raw)
+	dumpOutput0(raw)
+	dumpOutput1(protos)
+	probability := float64(topScore(raw))
 
 	cands := candidates(raw)
 	slog.Info("onnx: candidatos acima do limiar", "total", len(cands), "limiar", confMin)
-	dumpBoxes("3-antes-nms.jpg", src, cands, protoTensor.GetData())
+	dumpBoxes("3-antes-nms.jpg", src, cands, protos)
 
 	boxes := nms(cands)
 	slog.Info("onnx: boxes apos nms", "total", len(boxes), "iou_max", iouMax)
@@ -138,17 +150,156 @@ func (d *Detector) Detect(ctx context.Context, img []byte) ([]byte, error) {
 				b.y2*float32(src.Bounds().Dy())/imgSize))
 	}
 
-	out, err := annotate(src, boxes, protoTensor.GetData())
+	logMasks(boxes, protos)
+
+	out, err := annotate(src, boxes, protos)
 	if err != nil {
-		return nil, err
+		return nil, 0, 0, err
 	}
-	slog.Info("onnx: detect fim", "saida_bytes", len(out), "ms", time.Since(start).Milliseconds())
+	slog.Info("onnx: detect fim", "saida_bytes", len(out), "probabilidade", probability, "ms", time.Since(start).Milliseconds())
 	if dir := os.Getenv("DEBUG_DIR"); dir != "" {
 		os.WriteFile(filepath.Join(dir, "4-final.jpg"), out, 0644)
 		slog.Info("onnx: debug gravado", "dir", dir)
 	}
 
-	return out, nil
+	return out, probability, len(boxes), nil
+}
+
+func stats(data []float32) (float32, float32, float32) {
+	lo, hi := data[0], data[0]
+	var sum float64
+	for _, v := range data {
+		if v < lo {
+			lo = v
+		}
+		if v > hi {
+			hi = v
+		}
+		sum += float64(v)
+	}
+	return lo, hi, float32(sum / float64(len(data)))
+}
+
+func logTensor(name string, data []float32, rows, cols int) {
+	lo, hi, mean := stats(data)
+	slog.Info("onnx: tensor", "nome", name, "valores", len(data), "forma", fmt.Sprintf("[1 %d %d]", rows, cols), "min", lo, "max", hi, "media", mean)
+}
+
+func logFields(out []float32) {
+	names := []string{"cx", "cy", "w", "h", "score"}
+	for j := 0; j < numFields; j++ {
+		name := fmt.Sprintf("coef%d", j-5)
+		if j < len(names) {
+			name = names[j]
+		}
+		lo, hi, mean := stats(out[j*numBoxes : (j+1)*numBoxes])
+		slog.Info("onnx: campo", "indice", j, "nome", name, "min", lo, "max", hi, "media", mean)
+	}
+}
+
+func logTopBoxes(out []float32) {
+	idx := make([]int, numBoxes)
+	for i := range idx {
+		idx[i] = i
+	}
+	sort.Slice(idx, func(a, b int) bool { return out[4*numBoxes+idx[a]] > out[4*numBoxes+idx[b]] })
+
+	for r := 0; r < debugTopK && r < numBoxes; r++ {
+		i := idx[r]
+		coefs := make([]string, numProtos)
+		for k := 0; k < numProtos; k++ {
+			coefs[k] = fmt.Sprintf("%.4f", out[(5+k)*numBoxes+i])
+		}
+		cx, cy := out[i], out[numBoxes+i]
+		w, h := out[2*numBoxes+i], out[3*numBoxes+i]
+		slog.Info("onnx: bruto",
+			"rank", r,
+			"indice", i,
+			"score", out[4*numBoxes+i],
+			"cx", cx, "cy", cy, "w", w, "h", h,
+			"xyxy", fmt.Sprintf("[%.1f %.1f %.1f %.1f]", cx-w/2, cy-h/2, cx+w/2, cy+h/2),
+			"coefs", "["+strings.Join(coefs, " ")+"]")
+	}
+}
+
+func logMasks(boxes []box, protos []float32) {
+	for i, b := range boxes {
+		mask := buildMask(b, protos)
+		acima := 0
+		var hi float32
+		for _, v := range mask {
+			if v >= maskMin {
+				acima++
+			}
+			if v > hi {
+				hi = v
+			}
+		}
+		slog.Info("onnx: mascara", "i", i, "score", b.score, "pixels_acima", acima, "total_pixels", len(mask), "max", hi, "limiar", maskMin)
+	}
+}
+
+func dumpOutput0(out []float32) {
+	dir := os.Getenv("DEBUG_DIR")
+	if dir == "" {
+		return
+	}
+	f, err := os.Create(filepath.Join(dir, "5-output0.csv"))
+	if err != nil {
+		slog.Error("onnx: debug output0 falhou", "erro", err)
+		return
+	}
+	defer f.Close()
+
+	w := bufio.NewWriter(f)
+	defer w.Flush()
+
+	fmt.Fprint(w, "box,cx,cy,w,h,score")
+	for k := 0; k < numProtos; k++ {
+		fmt.Fprintf(w, ",coef%d", k)
+	}
+	fmt.Fprintln(w)
+
+	for i := 0; i < numBoxes; i++ {
+		fmt.Fprintf(w, "%d", i)
+		for j := 0; j < numFields; j++ {
+			fmt.Fprintf(w, ",%.6f", out[j*numBoxes+i])
+		}
+		fmt.Fprintln(w)
+	}
+	slog.Info("onnx: debug output0 gravado", "arquivo", filepath.Join(dir, "5-output0.csv"), "linhas", numBoxes)
+}
+
+func dumpOutput1(protos []float32) {
+	dir := os.Getenv("DEBUG_DIR")
+	if dir == "" {
+		return
+	}
+	f, err := os.Create(filepath.Join(dir, "6-output1.bin"))
+	if err != nil {
+		slog.Error("onnx: debug output1 falhou", "erro", err)
+		return
+	}
+	defer f.Close()
+
+	w := bufio.NewWriter(f)
+	defer w.Flush()
+
+	if err := binary.Write(w, binary.LittleEndian, protos); err != nil {
+		slog.Error("onnx: debug output1 falhou", "erro", err)
+		return
+	}
+	slog.Info("onnx: debug output1 gravado", "arquivo", filepath.Join(dir, "6-output1.bin"), "float32", len(protos), "forma", fmt.Sprintf("[%d %d %d]", numProtos, maskSize, maskSize))
+}
+
+func topScore(out []float32) float32 {
+	var top float32
+	for i := 0; i < numBoxes; i++ {
+		if s := out[4*numBoxes+i]; s > top {
+			top = s
+		}
+	}
+	return top
 }
 
 func resize(src image.Image) *image.RGBA {
