@@ -25,28 +25,41 @@ func NewHandler(svc *complaint.Service, timeout time.Duration, log *slog.Logger)
 func (h *Handler) Register(r fiber.Router) {
 	r.Post("/complaint", h.CreateComplaint)
 	r.Get("/complaints", h.ListComplaints)
+	r.Delete("/complaints/:id", h.DeleteComplaint)
 	r.Get("/health", h.Health)
 }
 
 type complaintResponse struct {
-	ID        uint    `json:"id"`
-	City      string  `json:"city"`
-	Street    string  `json:"street"`
-	Latitude  float64 `json:"latitude"`
-	Longitude float64 `json:"longitude"`
-	PhotoKey  string  `json:"photo_key"`
-	PhotoURL  string  `json:"photo_url"`
+	ID          uint    `json:"id"`
+	City        string  `json:"city"`
+	Street      string  `json:"street"`
+	Latitude    float64 `json:"latitude"`
+	Longitude   float64 `json:"longitude"`
+	PhotoKey    string  `json:"photo_key"`
+	PhotoURL    string  `json:"photo_url"`
+	DetectKey   string  `json:"detect_key"`
+	DetectURL   string  `json:"detect_url"`
+	Probability float64 `json:"pothole_probability"`
+	Count       int     `json:"pothole_count"`
+	State       string  `json:"state"`
+	CreatedAt   string  `json:"created_at"`
 }
 
 func (h *Handler) toResponse(c complaint.Complaint) complaintResponse {
 	return complaintResponse{
-		ID:        c.ID,
-		City:      c.City,
-		Street:    c.Street,
-		Latitude:  c.Latitude,
-		Longitude: c.Longitude,
-		PhotoKey:  c.PhotoKey,
-		PhotoURL:  h.svc.PhotoURL(c.PhotoKey),
+		ID:          c.ID,
+		City:        c.City,
+		Street:      c.Street,
+		Latitude:    c.Latitude,
+		Longitude:   c.Longitude,
+		PhotoKey:    c.PhotoKey,
+		PhotoURL:    h.svc.PhotoURL(c.PhotoKey),
+		DetectKey:   complaint.DetectPhotoKey(c.PhotoKey),
+		DetectURL:   h.svc.DetectPhotoURL(c.PhotoKey),
+		Probability: c.Probability,
+		Count:       c.Count,
+		State:       c.State,
+		CreatedAt:   c.CreatedAt,
 	}
 }
 
@@ -112,10 +125,27 @@ func (h *Handler) ListComplaints(c *fiber.Ctx) error {
 	return c.JSON(out)
 }
 
+func (h *Handler) DeleteComplaint(c *fiber.Ctx) error {
+	ctx, cancel := context.WithTimeout(c.UserContext(), h.timeout)
+	defer cancel()
+
+	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
+	if err != nil || id == 0 {
+		return badRequest(c, "id inválido")
+	}
+
+	if err := h.svc.Delete(ctx, uint(id)); err != nil {
+		return h.writeError(c, err)
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
 func (h *Handler) writeError(c *fiber.Ctx, err error) error {
 	switch {
 	case errors.Is(err, complaint.ErrValidation):
 		return badRequest(c, err.Error())
+	case errors.Is(err, complaint.ErrNotFound):
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	case errors.Is(err, context.DeadlineExceeded):
 		h.log.Warn("requisição estourou o tempo limite", "rota", c.Path())
 		return c.Status(fiber.StatusGatewayTimeout).

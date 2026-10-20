@@ -16,6 +16,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/recover"
 
 	"github.com/pedropaffaro/deep-pothole-backend/internal/adapters/d1"
+	"github.com/pedropaffaro/deep-pothole-backend/internal/adapters/onnx"
 	"github.com/pedropaffaro/deep-pothole-backend/internal/adapters/s3"
 	"github.com/pedropaffaro/deep-pothole-backend/internal/complaint"
 	"github.com/pedropaffaro/deep-pothole-backend/internal/config"
@@ -53,7 +54,13 @@ func run(log *slog.Logger) error {
 		return err
 	}
 
-	svc := complaint.NewService(repo, photos)
+	detector, err := onnx.New()
+	if err != nil {
+		return err
+	}
+	defer detector.Close()
+
+	svc := complaint.NewService(repo, photos, detector)
 	handler := httpapi.NewHandler(svc, config.RequestTimeout, log)
 
 	app := fiber.New(fiber.Config{

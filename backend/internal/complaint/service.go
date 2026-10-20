@@ -1,26 +1,32 @@
 package complaint
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"time"
 )
+
+const sqliteTime = "2006-01-02 15:04:05"
 
 var allowedExtensions = map[string]bool{
 	".jpg": true, ".jpeg": true, ".png": true, ".webp": true, ".heic": true,
 }
 
 type Service struct {
-	repo   Repository
-	photos PhotoStorage
+	repo     Repository
+	photos   PhotoStorage
+	detector Detector
 }
 
-func NewService(repo Repository, photos PhotoStorage) *Service {
-	return &Service{repo: repo, photos: photos}
+func NewService(repo Repository, photos PhotoStorage, detector Detector) *Service {
+	return &Service{repo: repo, photos: photos, detector: detector}
 }
 
 func (s *Service) Create(ctx context.Context, in CreateInput) (*Complaint, error) {
@@ -51,16 +57,34 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (*Complaint, error
 		return nil, err
 	}
 
-	if err := s.photos.Upload(ctx, key, in.ContentType, in.Photo); err != nil {
+	raw, err := io.ReadAll(in.Photo)
+	if err != nil {
+		return nil, fmt.Errorf("ler foto: %w", err)
+	}
+
+	if err := s.photos.Upload(ctx, key, in.ContentType, bytes.NewReader(raw)); err != nil {
 		return nil, fmt.Errorf("gravar foto: %w", err)
 	}
 
+	out, probability, count, err := s.detector.Detect(ctx, raw)
+	if err != nil {
+		return nil, fmt.Errorf("detectar: %w", err)
+	}
+	outKey := DetectPhotoKey(key)
+	if err := s.photos.Upload(ctx, outKey, "image/jpeg", bytes.NewReader(out)); err != nil {
+		return nil, fmt.Errorf("gravar saida do modelo: %w", err)
+	}
+	slog.Info("modelo: saida gravada", "chave", outKey, "bytes", len(out))
+
 	c := &Complaint{
-		City:      city,
-		Street:    street,
-		Latitude:  in.Latitude,
-		Longitude: in.Longitude,
-		PhotoKey:  key,
+		City:        city,
+		Street:      street,
+		Latitude:    in.Latitude,
+		Longitude:   in.Longitude,
+		PhotoKey:    key,
+		Probability: probability,
+		Count:       count,
+		CreatedAt:   time.Now().UTC().Format(sqliteTime),
 	}
 
 	if err := s.repo.Create(ctx, c); err != nil {
@@ -76,8 +100,39 @@ func (s *Service) List(ctx context.Context, limit int) ([]Complaint, error) {
 	return s.repo.List(ctx, limit)
 }
 
+// Delete remove a denúncia do banco e as duas imagens do bucket.
+// Falha ao apagar objeto não interrompe a operação: o registro sai da listagem
+// de qualquer jeito, e o objeto órfão fica registrado no log.
+func (s *Service) Delete(ctx context.Context, id uint) error {
+	c, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	for _, key := range []string{c.PhotoKey, DetectPhotoKey(c.PhotoKey)} {
+		if err := s.photos.Delete(ctx, key); err != nil {
+			slog.Warn("apagar imagem do bucket", "chave", key, "erro", err)
+		}
+	}
+
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return fmt.Errorf("apagar denúncia: %w", err)
+	}
+
+	slog.Info("denuncia apagada", "id", id, "chave", c.PhotoKey)
+	return nil
+}
+
 func (s *Service) PhotoURL(key string) string {
 	return s.photos.URL(key)
+}
+
+// DetectPhotoURL devolve a URL da imagem com as detecções desenhadas.
+func (s *Service) DetectPhotoURL(key string) string {
+	if key == "" {
+		return ""
+	}
+	return s.photos.URL(DetectPhotoKey(key))
 }
 
 func (s *Service) photoKey(originalName string) (string, error) {

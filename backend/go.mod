@@ -1,6 +1,6 @@
 module github.com/pedropaffaro/deep-pothole-backend
 
-go 1.24.5
+go 1.26.0
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.47.0
@@ -9,6 +9,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.23.5
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.113.0
 	github.com/gofiber/fiber/v2 v2.52.13
+	github.com/yalue/onnxruntime_go v1.25.0
+	golang.org/x/image v0.46.0
 )
 
 require (
@@ -36,5 +38,5 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.51.0 // indirect
 	github.com/valyala/tcplisten v1.0.0 // indirect
-	golang.org/x/sys v0.28.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
 )
