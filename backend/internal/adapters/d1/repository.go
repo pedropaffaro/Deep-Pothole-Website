@@ -119,6 +119,19 @@ func (r *Repo) Delete(ctx context.Context, id uint) error {
 	return nil
 }
 
+func (r *Repo) UpdateState(ctx context.Context, id uint, state string) error {
+	const query = `UPDATE complaints SET state = ? WHERE id = ?`
+
+	res, err := r.query(ctx, query, []string{state, strconv.FormatUint(uint64(id), 10)})
+	if err != nil {
+		return err
+	}
+	if len(res) == 0 || res[0].Meta.Changes == 0 {
+		return complaint.ErrNotFound
+	}
+	return nil
+}
+
 type complaintRow struct {
 	ID          uint    `json:"id"`
 	City        string  `json:"city"`

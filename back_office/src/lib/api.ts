@@ -28,6 +28,23 @@ export async function fetchComplaints(): Promise<Complaint[]> {
   return Array.isArray(data) ? data : [];
 }
 
+export async function updateComplaintState(
+  id: number,
+  state: string
+): Promise<Complaint> {
+  const response = await fetch(`${API_BASE_URL}/complaints/${id}/state`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ state }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Erro ${response.status} ao atualizar estado da denúncia ${id}`);
+  }
+
+  return response.json();
+}
+
 export async function deleteComplaint(id: number): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/complaints/${id}`, {
     method: "DELETE",

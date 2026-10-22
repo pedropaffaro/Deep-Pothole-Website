@@ -25,6 +25,7 @@ func NewHandler(svc *complaint.Service, timeout time.Duration, log *slog.Logger)
 func (h *Handler) Register(r fiber.Router) {
 	r.Post("/complaint", h.CreateComplaint)
 	r.Get("/complaints", h.ListComplaints)
+	r.Patch("/complaints/:id/state", h.UpdateComplaintState)
 	r.Delete("/complaints/:id", h.DeleteComplaint)
 	r.Get("/health", h.Health)
 }
@@ -123,6 +124,29 @@ func (h *Handler) ListComplaints(c *fiber.Ctx) error {
 		out = append(out, h.toResponse(item))
 	}
 	return c.JSON(out)
+}
+
+func (h *Handler) UpdateComplaintState(c *fiber.Ctx) error {
+	ctx, cancel := context.WithTimeout(c.UserContext(), h.timeout)
+	defer cancel()
+
+	id, err := strconv.ParseUint(c.Params("id"), 10, 64)
+	if err != nil || id == 0 {
+		return badRequest(c, "id inválido")
+	}
+
+	var body struct {
+		State string `json:"state"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return badRequest(c, "corpo inválido")
+	}
+
+	out, err := h.svc.UpdateState(ctx, uint(id), body.State)
+	if err != nil {
+		return h.writeError(c, err)
+	}
+	return c.JSON(h.toResponse(*out))
 }
 
 func (h *Handler) DeleteComplaint(c *fiber.Ctx) error {

@@ -123,6 +123,18 @@ func (s *Service) Delete(ctx context.Context, id uint) error {
 	return nil
 }
 
+func (s *Service) UpdateState(ctx context.Context, id uint, state string) (*Complaint, error) {
+	state = strings.TrimSpace(state)
+	if !ValidState(state) {
+		return nil, fmt.Errorf("%w: estado %q inválido, use um de %v", ErrValidation, state, States)
+	}
+
+	if err := s.repo.UpdateState(ctx, id, state); err != nil {
+		return nil, err
+	}
+	return s.repo.Get(ctx, id)
+}
+
 func (s *Service) PhotoURL(key string) string {
 	return s.photos.URL(key)
 }

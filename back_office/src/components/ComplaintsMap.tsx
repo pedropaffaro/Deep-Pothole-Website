@@ -4,6 +4,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 import type { Complaint } from "../lib/api";
+import { pinColor } from "../lib/states";
 
 interface ComplaintsMapProps {
   complaints: Complaint[];
@@ -15,7 +16,7 @@ interface ComplaintsMapProps {
 const DEFAULT_CENTER: [number, number] = [-22.0087, -47.8909];
 const DEFAULT_ZOOM = 13;
 
-const pinIcon = (selected: boolean) =>
+const pinIcon = (color: string, selected: boolean) =>
   L.divIcon({
     className: "",
     html: `
@@ -24,8 +25,9 @@ const pinIcon = (selected: boolean) =>
         height: 26px;
         border-radius: 9999px 9999px 4px 9999px;
         transform: rotate(45deg);
-        background: ${selected ? "#FFCA3A" : "#2A48A3"};
+        background: ${color};
         border: 3px solid ${selected ? "#1B2237" : "#FFFFFF"};
+        ${selected ? "outline: 3px solid #FFCA3A;" : ""}
         box-shadow: 0 5px 12px rgba(0,0,0,0.35);
       "></div>
     `,
@@ -87,7 +89,7 @@ const ComplaintsMap = ({
           <Marker
             key={complaint.id}
             position={[complaint.latitude, complaint.longitude]}
-            icon={pinIcon(complaint.id === selectedId)}
+            icon={pinIcon(pinColor(complaint.state), complaint.id === selectedId)}
             zIndexOffset={complaint.id === selectedId ? 1000 : 0}
             eventHandlers={{
               click: () => onSelect(complaint),

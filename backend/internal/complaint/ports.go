@@ -10,6 +10,7 @@ type Repository interface {
 	List(ctx context.Context, limit int) ([]Complaint, error)
 	Get(ctx context.Context, id uint) (*Complaint, error)
 	Delete(ctx context.Context, id uint) error
+	UpdateState(ctx context.Context, id uint, state string) error
 }
 
 type Detector interface {

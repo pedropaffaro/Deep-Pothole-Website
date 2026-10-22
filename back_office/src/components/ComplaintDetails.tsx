@@ -2,11 +2,17 @@ import { useState } from "react";
 
 import type { Complaint } from "../lib/api";
 import StateTag from "./StateTag";
+import AnalyzedQueue from "./AnalyzedQueue";
+import { STATES } from "../lib/states";
 
 interface ComplaintDetailsProps {
   complaint: Complaint;
   onClose: () => void;
   onDelete: (complaint: Complaint) => Promise<void>;
+  onChangeState: (complaint: Complaint, state: string) => Promise<void>;
+  queue: Complaint[];
+  onSelectQueued: (complaint: Complaint) => void;
+  onReorderQueue: (ids: number[]) => void;
 }
 
 interface InfoFieldProps {
@@ -64,7 +70,23 @@ function ComplaintDetails({
   complaint,
   onClose,
   onDelete,
+  onChangeState,
+  queue,
+  onSelectQueued,
+  onReorderQueue,
 }: ComplaintDetailsProps) {
+  const [salvandoEstado, setSalvandoEstado] = useState<boolean>(false);
+
+  const handleChangeState = async (state: string) => {
+    if (state === complaint.state) return;
+    setSalvandoEstado(true);
+    try {
+      await onChangeState(complaint, state);
+    } finally {
+      setSalvandoEstado(false);
+    }
+  };
+
   // Exclusão apaga registro e imagens e não tem volta, então pede confirmação
   const [confirmando, setConfirmando] = useState<boolean>(false);
   const [apagando, setApagando] = useState<boolean>(false);
@@ -167,6 +189,41 @@ function ComplaintDetails({
                 : `${(complaint.pothole_probability * 100).toFixed(1)}%`
             }
           />
+
+          <div className="flex items-start gap-3">
+            <div className="flex flex-col flex-1 min-w-0">
+              <label
+                htmlFor="complaint-state"
+                className="text-sm font-bold tracking-[0.2em] text-white/60 uppercase mb-1"
+              >
+                Estado
+              </label>
+              <select
+                id="complaint-state"
+                value={complaint.state}
+                disabled={salvandoEstado}
+                onChange={(e) => handleChangeState(e.target.value)}
+                className="w-full px-3 py-2 bg-[#2a3c6b] border border-white/20 text-white text-lg rounded-lg capitalize cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {!STATES.some((s) => s.value === complaint.state) && (
+                  <option value={complaint.state}>
+                    {complaint.state || "sem estado"}
+                  </option>
+                )}
+                {STATES.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.value}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <AnalyzedQueue
+              complaints={queue}
+              selectedId={complaint.id}
+              onSelect={onSelectQueued}
+              onReorder={onReorderQueue}
+            />
+          </div>
 
           <a
             href={`https://www.google.com/maps/search/?api=1&query=${complaint.latitude},${complaint.longitude}`}

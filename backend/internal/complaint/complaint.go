@@ -15,6 +15,18 @@ type Complaint struct {
 	CreatedAt   string
 }
 
+// States são os estados válidos de uma denúncia, na ordem do fluxo de trabalho.
+var States = []string{"novo", "em análise", "analisado", "concertando"}
+
+func ValidState(state string) bool {
+	for _, s := range States {
+		if s == state {
+			return true
+		}
+	}
+	return false
+}
+
 type CreateInput struct {
 	City        string
 	Street      string
