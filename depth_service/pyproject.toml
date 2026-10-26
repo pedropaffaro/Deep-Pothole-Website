@@ -1,0 +1,25 @@
+[project]
+name = "depth-service"
+version = "0.1.0"
+description = "Estima a profundidade de buracos em relação ao asfalto plano a partir de uma foto"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "fastapi>=0.115",
+    "numpy>=1.26",
+    "onnxruntime>=1.20",
+    "pillow>=10.4",
+    "python-multipart>=0.0.12",
+    "scipy>=1.13",
+    "torch>=2.4",
+    "transformers>=4.45",
+    "uvicorn>=0.30",
+]
+
+# torch na versão CPU: o modelo de profundidade pequeno roda bem sem GPU e evita ~3GB de CUDA
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
